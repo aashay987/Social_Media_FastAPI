@@ -1,10 +1,14 @@
 from .. import models,utils,schemas,oAuth2
 from http.client import HTTPException
-from fastapi import FastAPI,HTTPException,Depends,APIRouter
-from ..database import engine,get_db,sessionLocal
+from fastapi import UploadFile, File,HTTPException,Depends,APIRouter
+from ..database import get_db,get_mongo_posts
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
+from bson import Binary
+from fastapi.responses import StreamingResponse
+import io
+import zipfile
 
 router = APIRouter(
     prefix='/post',
@@ -44,6 +48,12 @@ def create_post(post :schemas.PostCreate,db:Session = Depends(get_db),current_us
     db.add(my_post)
     db.commit()
     db.refresh(my_post) # just for returing the newly added entry while running query
+    posts = get_mongo_posts()
+    post ={
+         'id' : my_post.id,
+         'images' : []
+    }
+    posts.insert_one(post)
     return my_post
 
 @router.delete('/{id}')
@@ -54,6 +64,8 @@ def delete_post(id:int, db:Session = Depends(get_db),current_user = Depends(oAut
         raise HTTPException(status_code=403 , detail= f'Not authorized to perform the action')
     
     if fetched_post:
+        posts = get_mongo_posts()
+        posts.delete_one({'id':id})
         fetched_query.delete(synchronize_session=False)
         db.commit()
         return {"Deleted Message" : id}
@@ -74,47 +86,53 @@ def update_post(id:int,post:schemas.PostCreate,db:Session = Depends(get_db),curr
     db.commit()
     return fetched_post
 
-####Code below has similar functionality but without sqlalchemy orm
-### Need additional referencing to be done.
-'''
-@app.get("/post")
-def get_post(db: Session = Depends(get_db)):
-    cursor.execute("SELECT * from posts ")
-    posts = cursor.fetchall()
-    return {"data": posts}
+@router.post('/image/{id}')
+def add_image_post(id:int, files: List[UploadFile] = File(...),db:Session = Depends(get_db),current_user = Depends(oAuth2.get_current_user)):
+    fetched_query = db.query(models.Post).filter(models.Post.id == id)
+    fetched_post = fetched_query.first()
+    if fetched_post == None:
+        raise HTTPException (status_code=404, detail='Post not found')
+        
+    if fetched_post.user_id != current_user.id:
+        raise HTTPException(status_code= 403, detail= f'Not authorized to perform this action')
+    posts = get_mongo_posts()
+    
+    document_query = {"id": id}  # Replace with the actual document identifier
+    encoded_files = []
+    for file in files:
+        encoded_files.append(Binary(file.file.read()))
+    update_query = {"$push": {"images": {"$each": encoded_files}}}
+    posts.update_one(document_query, update_query)
+    return len(files)
 
-@app.get('/post/{id}')
-def get_post(id:int):
-    #The parameter is constraint as int, fast api sends id as string. Above line converts to string.
-    #If not convertable will throw an error.
-    cursor.execute("SELECT * FROM posts WHERE id = %s",[int(id)])
-    fetched_post = cursor.fetchone()
-    if not fetched_post:
-        raise HTTPException(status_code= 404, detail= f"post with id = {id} not found")
-    return {'post':fetched_post}
+@router.get('/image/{id}')
+def get_images(id:int,db:Session = Depends(get_db),current_user = Depends(oAuth2.get_current_user)):
+    fetched_query = db.query(models.Post).filter(models.Post.id == id)
+    fetched_post = fetched_query.first()
+    if fetched_post == None:
+        raise HTTPException (status_code=404, detail='Post not found')
+        
+    if fetched_post.user_id != current_user.id:
+        raise HTTPException(status_code= 403, detail= f'Not authorized to perform this action')
+    posts = get_mongo_posts()
+    query = {"id": id}
+    result = posts.find_one(query)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Profile picture not found")
+    
+    zip_buffer = io.BytesIO()
 
-@app.post('/post',status_code=201)
-def create_post(post:Post,response:Response):
-    cursor.execute("INSERT INTO posts (title,content,published) VALUES (%s,%s,%s) RETURNING *", (post.title,post.content,post.published))
-    my_post = cursor.fetchone()
-    conn.commit()
-    return {"message" : my_post}  
+    with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED, False) as zip_file:
+        images_from_db = result.get("images")
 
-@app.delete('/post/{id}')
-def delete_post(id:int,response:Response):
-    cursor.execute("DELETE FROM posts WHERE id = %s RETURNING *",[int(id)])
-    delete_post = cursor.fetchone()
-    if not delete_post:
-        raise HTTPException(status_code= 404, detail= f"post with id = {id} not found")
-    conn.commit()
-    return {"post" : delete_post}
 
-@app.put('/post/{id}')
-def update_post(id:int,post:Post,response:Response):
-    cursor.execute("UPDATE posts SET title = %s,content= %s,published= %s WHERE id = %s RETURNING * ",(post.title,post.content,post.published,id))
-    updated_post = cursor.fetchone()
-    conn.commit()
-    if not updated_post:
-        raise HTTPException(404,detail=f"Post with id = {id} not found")
-    return {"updated post" : updated_post} 
-    '''
+        for i,image_bytes in enumerate(images_from_db):
+            
+            if image_bytes:
+                image_filename = f"{i}.png"
+                zip_file.writestr(image_filename, image_bytes)
+
+    zip_content = zip_buffer.getvalue()
+
+    return StreamingResponse(io.BytesIO(zip_content), media_type="application/zip", headers={'Content-Disposition': 'attachment; filename="images.zip"'})
+

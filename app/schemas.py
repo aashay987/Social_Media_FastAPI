@@ -2,14 +2,16 @@
 from pydantic import BaseModel,EmailStr #The pydantic library is used to mantain the data integrity.
 from datetime import datetime
 from typing import Optional
+from fastapi import File,UploadFile
 
 class UserBase(BaseModel):
     name:str
     email:EmailStr
     
+
 class UserCreate(UserBase):
     password:str
-
+    
 class UserResponse(UserBase):
     id:int
     created_at:datetime

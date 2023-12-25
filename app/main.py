@@ -1,10 +1,4 @@
-#from typing import Optional,List
 from fastapi import FastAPI
-import psycopg2
-#from psycopg2.extras import RealDictCursor
-from .import models 
-from .database import engine
-#from sqlalchemy.orm import Session
 from .routers import posts,users,auth,votes
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,3 +35,11 @@ app.include_router(posts.router)
 app.include_router(auth.router)
 app.include_router(votes.router)
 
+
+# try:
+#     client = get_mongo()
+#     client.admin.command('ping')
+#     print("Pinged your deployment. You successfully connected to MongoDB!")
+# except Exception as e:
+#     print('Exception caused')
+#     print(e)    

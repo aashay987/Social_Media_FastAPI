@@ -21,15 +21,18 @@ def createacesstoken(data:dict):
     return encoded_token
 
 def verify_accesstoken(token:str,credential_exc):
+    #print('Hello')
     try:
         payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
         id:str = payload.get("id")
-
+        print(payload)
+        print(id)
         if id is None:  
             raise credential_exc
         token_data = schemas.TokenData(id=id)
     
-    except JWTError:
+    except JWTError as e: 
+        #print(e)
         raise credential_exc
     
     return token_data
