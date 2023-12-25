@@ -1,6 +1,6 @@
 # SocialMedia API
 
-This is an implementation of api for a social media application, that allows users to post, vote content. Users can post text as well as images. Relational as well as noSQL is used.
+This is an implementation of api for a social media application, that allows users to post, vote content. Users can post text as well as images. Relational(postgress) as well as NoSQL(mongodb) is used.
 
 ## Installation
 
