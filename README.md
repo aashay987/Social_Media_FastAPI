@@ -38,7 +38,7 @@ MONGODB_COLLECTION_POSTS =
 ```
 
 ## Usage
-Use POSTMON to test various api endpoints.
+Use POSTMAN to test various api endpoints.
 
 Use CURL for api endpoints serving images.\
 Examples
